@@ -48,6 +48,13 @@ def get_torrent_status(status_id):
 
 	return status_mapping[status_id]
 
+def get_status_id(status_name):
+	for key, value in status_mapping.iteritems():
+		if value == status_name:
+			return key
+
+	return -1
+
 def check_preallocation():
 	try:
 		logger.debug('PREALLOCATION_TIMEOUT_THRESHOLD is set to %.1f s. Will try to communicate with transmission daemon.', PREALLOCATION_TIMEOUT_THRESHOLD)

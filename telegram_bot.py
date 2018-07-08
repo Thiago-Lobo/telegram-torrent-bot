@@ -7,7 +7,7 @@ import json
 import subprocess
 import time
 import transmission_driver
-import sqlite_driver
+import workflows
 import logging
 import util
 import traceback
@@ -20,6 +20,7 @@ from pprint import pprint
 BOT_TOKEN = '599359528:AAGj6akAzWX12u16nvOxjxF9cf_go6zncv8'
 logger = logging.getLogger(__name__)
 
+TORRENTS_CHECK_PERIOD = 15
 PREALLOCATION_RETRY_SECONDS = 60
 TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK = 'add_magnet'
 
@@ -78,20 +79,35 @@ TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK = 'add_magnet'
 # 	print update.message.chat_id
 # 	bot.send_message(chat_id=update.message.chat_id, text='I don\'t know this command')
 
+####################################################
+## Handler Callbacks
+####################################################
+
 def add_magnet(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, json.dumps(args))
 	
-	try:
-		added_torrent = transmission_driver.add_torrent_magnet_link(args[0])
-		row_id = sqlite_driver.insert_torrent_record(added_torrent['hashString'])
-		sqlite_driver.insert_torrent_user(row_id, update.message.chat_id)
-		bot.send_message(chat_id=update.message.chat_id, text='Torrent "{0}" was added to download queue.'.format(added_torrent['name']))
-	except transmission_driver.PreallocationException:
+	result = workflows.add_torrent_by_magnet_link(update.message.chat_id, args)
+
+	if result['should_retry']:
 		job_queue.run_once(lambda bot, job: add_magnet(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
-		bot.send_message(chat_id=update.message.chat_id, text='Torrent engine is currently preallocating. Will retry automatically in {0} seconds.'.format(PREALLOCATION_RETRY_SECONDS))
-	except Exception as ex:
-		logging.exception('Error when adding torrent by magnet link.')
-		bot.send_message(chat_id=update.message.chat_id, text='Error when adding torrent by magnet link. Please verify provided link.')
+
+	bot.send_message(chat_id=update.message.chat_id, text=result['message'])
+
+####################################################
+## Periodic Jobs
+####################################################
+
+def check_completed_torrents(bot, job):
+	logger.info('Initializing check_completed_torrents periodic job')
+
+	result = workflows.check_completed_torrents()
+
+	for item in result:
+		bot.send_message(chat_id=item['username'], text=item['message'])
+
+####################################################
+## Initializers
+####################################################
 
 def initialize_logging():
 	logging.basicConfig(
@@ -101,13 +117,18 @@ def initialize_logging():
 		datefmt='%Y-%m-%d %H:%M:%S'
 	)
 
+def initialize_periodic_jobs(job_queue):
+	logger.info('Initializing periodic jobs')
+	job_queue.run_repeating(check_completed_torrents, interval=TORRENTS_CHECK_PERIOD)
+
 def initialize_bot():
+	logger.info('Initializing Telegram Bot')
 	updater = Updater(token = BOT_TOKEN)
 	dispatcher = updater.dispatcher
 	queue = updater.job_queue
 
-	start_handler = CommandHandler('start', start, pass_job_queue=True)
-	dispatcher.add_handler(start_handler)
+	# start_handler = CommandHandler('start', start, pass_job_queue=True)
+	# dispatcher.add_handler(start_handler)
 	
 	# echo_handler = MessageHandler(Filters.text, echo)
 	# dispatcher.add_handler(echo_handler)
@@ -126,11 +147,10 @@ def initialize_bot():
 	# callback_query_handler = CallbackQueryHandler(callback_query_resolver)
 	# dispatcher.add_handler(callback_query_handler)
 
+	initialize_periodic_jobs(queue)
+	
 	updater.start_polling()
 	updater.idle()
-
-	# For periodic jobs
-	# job_minute = queue.run_repeating(callback_minute, interval=60, first=0)
 
 def func0():
 	transmission_driver.add_torrent_magnet_link('magnet:?xt=urn:btih:45740f0889a82645dd8a1d5bc50eecedf5e79f47&dn=The.Death.of.Superman.2018.1080p.WEB-DL.DD5.1.H264-FGT&tr=http%3A%2F%2Ftracker.trackerfix.com%3A80%2Fannounce&tr=udp%3A%2F%2F9.rarbg.me%3A2710&tr=udp%3A%2F%2F9.rarbg.to%3A2710')
@@ -154,7 +174,7 @@ def func6():
 	print json.dumps(transmission_driver.get_session_stats(), indent=2)
 
 def func7():
-	result = transmission_driver.get_torrent_info_by_id([11])
+	result = transmission_driver.get_torrent_info_by_id([18])
 	for entry in result:
 		print json.dumps(entry, indent=2)
 
@@ -180,8 +200,7 @@ def func13():
 
 def main():
 	initialize_logging()
-	transmission_driver.initialize()
-
+	workflows.initialize()
 	initialize_bot()
 
 if __name__ == '__main__':
