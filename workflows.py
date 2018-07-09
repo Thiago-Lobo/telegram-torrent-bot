@@ -51,10 +51,12 @@ def add_torrent_by_magnet_link(username, args):
 def check_completed_torrents():
 	result = []
 
+	logger.info('Starting check_completed_torrents workflow')
+
 	try:
-		transmission_torrents = transmission_driver.get_torrent_info_by_id('all')
+		transmission_torrents = transmission_driver.get_torrent_info_by_id(transmission_driver.ALL_TORRENTS_STRING)
 	except transmission_driver.PreallocationException:
-		logger.info('Daemon is preallocating. Aborting workflow.')
+		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
 		return result
 
 	unreported_hashes = sqlite_driver.get_unreported_torrents_hashstrings()
@@ -62,16 +64,30 @@ def check_completed_torrents():
 	for torrent in transmission_torrents:
 		status = torrent['status']
 		if status > transmission_driver.get_status_id('downloading'):
+			logger.debug('Torrent "%s" with ID "%s" finished downloading.', torrent['name'], torrent['id'])
 			if torrent['hashString'] in unreported_hashes:
+				logger.debug('Torrent "%s" with ID "%s" is unreported. Will tag it for reporting.', torrent['name'], torrent['id'])
 				message = 'Torrent "{0}" with ID "{1}" has finished downloading! Enjoy :)'.format(torrent['name'], torrent['id'])
 				usernames = sqlite_driver.get_users_by_torrent_hash(torrent['hashString'])
 				for username in usernames:
 					result.append({
 							'username': username,
-							'message': message
+							'message': message,
+							'hash_string': torrent['hashString']
 						})
 
+	logger.debug('Reporting data: %s', json.dumps(result))
+
 	return result
+
+def tag_torrents_as_reported(hash_strings):
+	if not isinstance(hash_strings, list):
+		hash_strings = [ hash_strings ]
+
+	logger.info('Starting tag_torrents_as_reported workflow with hash_strings: %s', json.dumps(hash_strings))
+
+	for hash_string in hash_strings:
+		sqlite_driver.set_torrent_reported(hash_string)
 
 ####################################################
 ## Testers

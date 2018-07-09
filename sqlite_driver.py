@@ -118,6 +118,7 @@ def set_torrent_reported(hash_string):
 	cursor = db.cursor()
 	logger.info('Flagging torrent record [%s] as reported', hash_string)
 	cursor.execute(QUERY_SET_TORRENT_REPORTED, (hash_string,))
+	db.commit()
 
 def main():
 	initialize()

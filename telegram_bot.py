@@ -17,12 +17,14 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from pprint import pprint
 
-BOT_TOKEN = '599359528:AAGj6akAzWX12u16nvOxjxF9cf_go6zncv8'
+API_KEY_FILE = 'telegram_api.key'
+
 logger = logging.getLogger(__name__)
 
 TORRENTS_CHECK_PERIOD = 15
 PREALLOCATION_RETRY_SECONDS = 60
 TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK = 'add_magnet'
+TELEGRAM_COMMAND_GET_TORRENT_INFO = 'get_info'
 
 # Add Torrent
 # Remove Torrent (specific/all)
@@ -103,7 +105,13 @@ def check_completed_torrents(bot, job):
 	result = workflows.check_completed_torrents()
 
 	for item in result:
-		bot.send_message(chat_id=item['username'], text=item['message'])
+		logger.debug('Sending message: "%s" to username "%s"', item['message'], item['username'])
+		
+		message_sent = None
+		message_sent = bot.send_message(chat_id=item['username'], text=item['message'])
+		
+		if message_sent:
+			workflows.tag_torrents_as_reported(item['hash_string'])
 
 ####################################################
 ## Initializers
@@ -112,7 +120,7 @@ def check_completed_torrents(bot, job):
 def initialize_logging():
 	logging.basicConfig(
 		filename='log_telegram_bot.log',
-		level=logging.INFO,
+		level=logging.DEBUG,
 		format='%(asctime)s.%(msecs)03d [%(name)25s] %(levelname)-7s %(funcName)s - %(message)s', 
 		datefmt='%Y-%m-%d %H:%M:%S'
 	)
@@ -123,7 +131,10 @@ def initialize_periodic_jobs(job_queue):
 
 def initialize_bot():
 	logger.info('Initializing Telegram Bot')
-	updater = Updater(token = BOT_TOKEN)
+
+	k = open(API_KEY_FILE, 'r')
+
+	updater = Updater(token = k.readlines()[0].strip())
 	dispatcher = updater.dispatcher
 	queue = updater.job_queue
 
