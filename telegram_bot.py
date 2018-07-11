@@ -21,65 +21,70 @@ API_KEY_FILE = 'telegram_api.key'
 
 logger = logging.getLogger(__name__)
 
-TORRENTS_CHECK_PERIOD = 15
+TORRENTS_CHECK_PERIOD = 60
 PREALLOCATION_RETRY_SECONDS = 60
 TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK = 'add_magnet'
 TELEGRAM_COMMAND_GET_TORRENT_INFO = 'get_info'
 
-# Add Torrent
-# Remove Torrent (specific/all)
-# Pause Torrent (specific/all)
-# Check Torrent (specific/all)
-# Alert after torrent is done
-# Check seed/leech stats
-
-# def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
-#     menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
-#     if header_buttons:
-#         menu.insert(0, header_buttons)
-#     if footer_buttons:
-#         menu.append(footer_buttons)
-#     return menu
-
-# def echo(bot, update):
-# 	bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
-
-# def caps(bot, update, args):
-# 	text_caps = ' '.join(args).upper()
-# 	bot.send_message(chat_id=update.message.chat_id, text=text_caps)
+def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
+    menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
+    if header_buttons:
+        menu.insert(0, header_buttons)
+    if footer_buttons:
+        menu.append(footer_buttons)
+    return menu
 
 # def buttons1(bot, update):
 	# custom_keyboard = [['TL', 'TR'], ['BL', 'BR']]
 	# reply_markup = ReplyKeyboardMarkup(custom_keyboard)
 	# bot.send_message(update.message.chat_id, text="Custom keyboard test", reply_markup=reply_markup)
 
-# def buttons(bot, update):
-# 	button_list = [	
-# 		InlineKeyboardButton("col1", callback_data='a'),
-# 		InlineKeyboardButton("col2", callback_data='b'),
-# 		InlineKeyboardButton("row 2", callback_data='c')
-# 	]
+def buttons(bot, update):
+	button_list = [	
+		InlineKeyboardButton("Play/Pause", callback_data='a'),
+		InlineKeyboardButton("col2", callback_data='b'),
+		InlineKeyboardButton("row 2", callback_data='c')
+	]
 
-# 	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
-# 	bot.send_message(update.message.chat_id, text="A two-column menu", reply_markup=reply_markup)
+	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
+	bot.send_message(update.message.chat_id, text="A two-column menu", reply_markup=reply_markup)
 
-# def callback_query_resolver(bot, update):
-# 	button_list = [	
-# 		InlineKeyboardButton("col1", callback_data='a'),
-# 		InlineKeyboardButton("col2", callback_data='b'),
-# 		InlineKeyboardButton("row 2", callback_data='c')
-# 	]
+def callback_query_resolver(bot, update):
+	button_list = [	
+		InlineKeyboardButton("col1", callback_data='a'),
+		InlineKeyboardButton("col2", callback_data='b'),
+		InlineKeyboardButton("row 2", callback_data='c')
+	]
 
-# 	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
-# 	# pprint(vars(update.callback_query))
-# 	# pprint(vars(update.callback_query.message))
-# 	bot.answer_callback_query(update.callback_query.id)
-# 	bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text='{0}'.format(update.callback_query.data), reply_markup=reply_markup)
-# 	# bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
+	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
+	# pprint(vars(update.callback_query))
+	# pprint(vars(update.callback_query.message))
+	bot.answer_callback_query(update.callback_query.id)
+	bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text='{0}'.format(update.callback_query.data), reply_markup=reply_markup)
+	# bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
 
 # def unknown(bot, update):
 # 	print update.message.chat_id
 # 	bot.send_message(chat_id=update.message.chat_id, text='I don\'t know this command')
+
+####################################################
+## Helpers
+####################################################
+
+def generate_torrent_info_message(torrent_data):
+	name = torrent_data['name']
+	percentage_done = (1.0 - float(torrent_data['leftUntilDone']) / float(torrent_data['totalSize'])) * 100.0
+	size = float(torrent_data['totalSize'] / (1000.0 * 1000.0 * 1000.0))
+	added = util.timestamp_to_string(util.epoch_to_timestamp(torrent_data['addedDate']))
+
+	message = 'Name: {name}\nSize: {size} GB\nDone: {percentage_done}%\nAdded: {added}'.format(
+			name = name,
+			percentage_done = percentage_done,
+			size = size,
+			added = added
+		)
+
+	return message
 
 ####################################################
 ## Handler Callbacks
@@ -94,6 +99,16 @@ def add_magnet(bot, update, job_queue, args):
 		job_queue.run_once(lambda bot, job: add_magnet(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
 
 	bot.send_message(chat_id=update.message.chat_id, text=result['message'])
+
+def get_info(bot, update, job_queue, args):
+	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_GET_TORRENT_INFO, json.dumps(args))
+	
+	result = workflows.get_torrent_information(update.message.chat_id, args)
+
+	if result['data']:
+		bot.send_message(chat_id=update.message.chat_id, text=generate_torrent_info_message(result['data'][0]))
+	else:
+		bot.send_message(chat_id=update.message.chat_id, text='not ok')
 
 ####################################################
 ## Periodic Jobs
@@ -137,26 +152,18 @@ def initialize_bot():
 	updater = Updater(token = k.readlines()[0].strip())
 	dispatcher = updater.dispatcher
 	queue = updater.job_queue
-
-	# start_handler = CommandHandler('start', start, pass_job_queue=True)
-	# dispatcher.add_handler(start_handler)
 	
-	# echo_handler = MessageHandler(Filters.text, echo)
-	# dispatcher.add_handler(echo_handler)
-
-	# buttons_handler = CommandHandler('buttons', buttons)
-	# dispatcher.add_handler(buttons_handler)
-
-	# caps_handler = CommandHandler('caps', caps, pass_args=True)
-	# dispatcher.add_handler(caps_handler)
+	buttons_handler = CommandHandler('buttons', buttons)
+	dispatcher.add_handler(buttons_handler)
 
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, add_magnet, pass_args=True, pass_job_queue=True))
+	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_GET_TORRENT_INFO, get_info, pass_args=True, pass_job_queue=True))
 
 	# unknown_handler = MessageHandler(Filters.command, unknown)
 	# dispatcher.add_handler(unknown_handler)
 
-	# callback_query_handler = CallbackQueryHandler(callback_query_resolver)
-	# dispatcher.add_handler(callback_query_handler)
+	callback_query_handler = CallbackQueryHandler(callback_query_resolver)
+	dispatcher.add_handler(callback_query_handler)
 
 	initialize_periodic_jobs(queue)
 	

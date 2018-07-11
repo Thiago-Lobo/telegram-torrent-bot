@@ -40,6 +40,18 @@ QUERY_SET_TORRENT_REPORTED = '''
 		TTR_HASHSTRING = (?)
 '''
 
+QUERY_SELECT_TORRENTS_HASHSTRINGS_BY_USERNAME = '''
+	select 
+		TTR_HASHSTRING 
+	from 
+		TBL_TORRENT_USER u, 
+		TBL_TORRENT_RECORD t 
+	where 
+		t.TTR_ID = u.TTR_ID 
+	and 
+		u.TTU_USERNAME = (?)
+'''
+
 QUERY_SELECT_USERS_BY_TTR_HASHSTRING = '''
 	select 
 		TTU_USERNAME 
@@ -96,6 +108,14 @@ def insert_torrent_user(ttr_id, username):
 	db.commit()
 
 	return cursor.lastrowid
+
+def get_torrent_hashes_by_user(username):
+	db = get_db()
+	cursor = db.cursor()
+	logger.info('Querying for torrents linked to username [%s]', username)
+	cursor.execute(QUERY_SELECT_TORRENTS_HASHSTRINGS_BY_USERNAME, (username,))
+	
+	return [x['TTR_HASHSTRING'] for x in cursor]
 
 def get_users_by_torrent_hash(hash_string):
 	db = get_db()

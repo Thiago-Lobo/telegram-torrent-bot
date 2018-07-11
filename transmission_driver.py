@@ -60,7 +60,7 @@ def check_preallocation():
 		logger.debug('PREALLOCATION_TIMEOUT_THRESHOLD is set to %.1f s. Will try to communicate with transmission daemon.', PREALLOCATION_TIMEOUT_THRESHOLD)
 		rpc.get_session(timeout=PREALLOCATION_TIMEOUT_THRESHOLD)
 	except Exception as ex:
-		logger.debug('Exception caught')
+		logger.exception('Exception caught')
 		if type(ex).__name__ == 'timeout':
 			logger.debug('Exception type is timeout. Will raise PreallocationException.')
 			raise PreallocationException('Transmission daemon is preallocating. Try again later.')

@@ -4,6 +4,7 @@ import logging
 import jsonpickle
 import json
 import random
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def object_to_json(object):
 		result[field] = json_object["_fields"][field]["py/newargs"]["py/tuple"][0]
 
 	logger.debug('Successfully populated JSON with %i fields from object', len(result.keys()))
-	logger.debug('Populated JSON: %s', json.dumps(result))
+	# logger.debug('Populated JSON: %s', json.dumps(result))
 
 	return result
 
@@ -37,3 +38,9 @@ def timestamp_to_string(timestamp):
 
 def random_bool():
 	return bool(random.getrandbits(1))
+
+def add_seconds_to_timestamp(timestamp, seconds):
+	return timestamp + datetime.timedelta(seconds=seconds)
+
+def epoch_to_timestamp(epoch):
+	return datetime.datetime.fromtimestamp(epoch)
