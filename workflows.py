@@ -6,6 +6,7 @@ import json
 import random
 import sqlite_driver
 import transmission_driver
+import util
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,32 @@ def initialize():
 	transmission_driver.initialize()
 
 ####################################################
+## Helpers
+####################################################
+
+def generate_torrent_info_message(torrent_data):
+	name = torrent_data['name']
+	percentage_done = (1.0 - float(torrent_data['leftUntilDone']) / float(torrent_data['totalSize'])) * 100.0
+	size = '%.2f' % (float(torrent_data['totalSize'] / (1000.0 * 1000.0 * 1000.0)))
+	added = util.timestamp_to_string(util.epoch_to_timestamp(torrent_data['addedDate']))
+
+	message = 'Name: {name}\nSize: {size} GB\nDone: {percentage_done}%\nAdded: {added}'.format(
+			name = name,
+			percentage_done = percentage_done,
+			size = size,
+			added = added
+		)
+
+	return message
+
+####################################################
 ## Workflows
 ####################################################
 
 def add_torrent_by_magnet_link(username, args):
 	result = {
 		"worked": False,
-		"should_retry": False,
+		"retry": False,
 		"message": ''
 	}
 
@@ -38,7 +58,7 @@ def add_torrent_by_magnet_link(username, args):
 		result['worked'] = True
 		result['message'] = 'Torrent "{0}" was added to download queue with ID "{1}".'.format(added_torrent['name'], added_torrent['id'])
 	except transmission_driver.PreallocationException:
-		result['should_retry'] = True
+		result['retry'] = True
 		result['message'] = 'Torrent engine is currently preallocating. Will retry automatically.'
 	except Exception as ex:
 		logging.exception('Error when adding torrent by magnet link.')
@@ -92,7 +112,7 @@ def get_torrent_information(username, args):
 	result = {
 		'worked': False,
 		'retry': False,
-		'data': None		
+		'data': None
 	}
 
 	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
@@ -100,12 +120,11 @@ def get_torrent_information(username, args):
 	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
 
 	try:
-		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])
+		torrent_data = transmission_driver.get_torrent_info_by_id(args)
 
-		logger.debug('Torrent hash string: %s', torrent_data[0]['hashString'])
+		logger.debug('Torrent hash strings: %s', json.dumps([x['hashString'] for x in torrent_data]))
 
-		if torrent_data[0]['hashString'] in user_torrent_hashes:
-			result['data'] = torrent_data
+		result['data'] = [generate_torrent_info_message(x) for x in torrent_data if x['hashString'] in user_torrent_hashes]
 
 		result['worked'] = True
 	except transmission_driver.PreallocationException:
@@ -118,7 +137,7 @@ def get_torrent_information(username, args):
 
 ####################################################
 ## Testers
-####################################################		
+####################################################
 
 def main():
 	initialize()

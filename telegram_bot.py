@@ -11,11 +11,12 @@ import workflows
 import logging
 import util
 import traceback
+import emoji
 from datetime import datetime, timedelta
 from optparse import OptionParser
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from pprint import pprint
+
 
 API_KEY_FILE = 'telegram_api.key'
 
@@ -26,76 +27,56 @@ PREALLOCATION_RETRY_SECONDS = 60
 TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK = 'add_magnet'
 TELEGRAM_COMMAND_GET_TORRENT_INFO = 'get_info'
 
-def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
-    menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
-    if header_buttons:
-        menu.insert(0, header_buttons)
-    if footer_buttons:
-        menu.append(footer_buttons)
-    return menu
-
-# def buttons1(bot, update):
-	# custom_keyboard = [['TL', 'TR'], ['BL', 'BR']]
-	# reply_markup = ReplyKeyboardMarkup(custom_keyboard)
-	# bot.send_message(update.message.chat_id, text="Custom keyboard test", reply_markup=reply_markup)
-
-def buttons(bot, update):
-	button_list = [	
-		InlineKeyboardButton("Play/Pause", callback_data='a'),
-		InlineKeyboardButton("col2", callback_data='b'),
-		InlineKeyboardButton("row 2", callback_data='c')
-	]
-
-	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
-	bot.send_message(update.message.chat_id, text="A two-column menu", reply_markup=reply_markup)
-
-def callback_query_resolver(bot, update):
-	button_list = [	
-		InlineKeyboardButton("col1", callback_data='a'),
-		InlineKeyboardButton("col2", callback_data='b'),
-		InlineKeyboardButton("row 2", callback_data='c')
-	]
-
-	reply_markup = InlineKeyboardMarkup(build_menu(button_list, n_cols=2))
-	# pprint(vars(update.callback_query))
-	# pprint(vars(update.callback_query.message))
-	bot.answer_callback_query(update.callback_query.id)
-	bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text='{0}'.format(update.callback_query.data), reply_markup=reply_markup)
-	# bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
-
-# def unknown(bot, update):
-# 	print update.message.chat_id
-# 	bot.send_message(chat_id=update.message.chat_id, text='I don\'t know this command')
+CALLBACK_QUERY_PLAY_PAUSE_TORRENT = 'cbq_play_pause_torrent'
+CALLBACK_QUERY_REFRESH_TORRENT = 'cbq_refresh_torrent'
+CALLBACK_QUERY_DELETE_TORRENT = 'cbq_delete_torrent'
 
 ####################################################
 ## Helpers
 ####################################################
 
-def generate_torrent_info_message(torrent_data):
-	name = torrent_data['name']
-	percentage_done = (1.0 - float(torrent_data['leftUntilDone']) / float(torrent_data['totalSize'])) * 100.0
-	size = float(torrent_data['totalSize'] / (1000.0 * 1000.0 * 1000.0))
-	added = util.timestamp_to_string(util.epoch_to_timestamp(torrent_data['addedDate']))
+def generate_buttons_for_get_info_message():
+	button_list = [
+		InlineKeyboardButton(emoji.emojize(':play_or_pause_button:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
+		InlineKeyboardButton(emoji.emojize(':recycling_symbol:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
+		InlineKeyboardButton(emoji.emojize(':cross_mark:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT)
+	]
 
-	message = 'Name: {name}\nSize: {size} GB\nDone: {percentage_done}%\nAdded: {added}'.format(
-			name = name,
-			percentage_done = percentage_done,
-			size = size,
-			added = added
-		)
+	return InlineKeyboardMarkup(util.build_menu(button_list, n_cols=3))
 
-	return message
+####################################################
+## Callback query resolver
+####################################################
+
+def callback_query_resolver(bot, update):
+	# bot.answer_callback_query(update.callback_query.id)
+	# bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text='{0}'.format(update.callback_query.data))
+	# bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
+
+	callback_query_data = update.callback_query.data
+
+	if callback_query_data == CALLBACK_QUERY_REFRESH_TORRENT:
+		a = 2
+	elif callback_query_data == CALLBACK_QUERY_REFRESH_TORRENT:
+		a = 2
+	elif callback_query_data == CALLBACK_QUERY_DELETE_TORRENT:
+		a = 2
+	else:
+		a = 2
 
 ####################################################
 ## Handler Callbacks
 ####################################################
+
+def unknown(bot, update, job_queue, args):
+	bot.send_message(chat_id=update.message.chat_id, text='Unknown command.')
 
 def add_magnet(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, json.dumps(args))
 	
 	result = workflows.add_torrent_by_magnet_link(update.message.chat_id, args)
 
-	if result['should_retry']:
+	if result['retry']:
 		job_queue.run_once(lambda bot, job: add_magnet(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
 
 	bot.send_message(chat_id=update.message.chat_id, text=result['message'])
@@ -105,10 +86,13 @@ def get_info(bot, update, job_queue, args):
 	
 	result = workflows.get_torrent_information(update.message.chat_id, args)
 
-	if result['data']:
-		bot.send_message(chat_id=update.message.chat_id, text=generate_torrent_info_message(result['data'][0]))
+	if result['retry']:
+		job_queue.run_once(lambda bot, job: get_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
+	elif result['data']:
+		reply_markup = generate_buttons_for_get_info_message()
+		bot.send_message(chat_id=update.message.chat_id, text=result['data'][0], reply_markup=reply_markup)
 	else:
-		bot.send_message(chat_id=update.message.chat_id, text='not ok')
+		bot.send_message(chat_id=update.message.chat_id, text='No torrent found with the provided ID.')
 
 ####################################################
 ## Periodic Jobs
@@ -153,14 +137,12 @@ def initialize_bot():
 	dispatcher = updater.dispatcher
 	queue = updater.job_queue
 	
-	buttons_handler = CommandHandler('buttons', buttons)
-	dispatcher.add_handler(buttons_handler)
+	# buttons_handler = CommandHandler('buttons', buttons)
+	# dispatcher.add_handler(buttons_handler)
 
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, add_magnet, pass_args=True, pass_job_queue=True))
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_GET_TORRENT_INFO, get_info, pass_args=True, pass_job_queue=True))
-
-	# unknown_handler = MessageHandler(Filters.command, unknown)
-	# dispatcher.add_handler(unknown_handler)
+	dispatcher.add_handler(MessageHandler(Filters.command, unknown))
 
 	callback_query_handler = CallbackQueryHandler(callback_query_resolver)
 	dispatcher.add_handler(callback_query_handler)
