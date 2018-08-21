@@ -7,6 +7,9 @@ import random
 import sqlite_driver
 import transmission_driver
 import util
+import emoji
+import telegram_bot
+from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,15 @@ def generate_torrent_info_message(torrent_data):
 		)
 
 	return message
+
+def generate_buttons_for_get_info_message(torrent_id):
+	button_list = [
+		InlineKeyboardButton(emoji.emojize(':play_or_pause_button:'), callback_data='%s:%s' % (telegram_bot.CALLBACK_QUERY_REFRESH_TORRENT, torrent_id)),
+		InlineKeyboardButton(emoji.emojize(':recycling_symbol:'), callback_data=telegram_bot.CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
+		InlineKeyboardButton(emoji.emojize(':cross_mark:'), callback_data=telegram_bot.CALLBACK_QUERY_DELETE_TORRENT)
+	]
+
+	return InlineKeyboardMarkup(util.build_menu(button_list, n_cols=3))
 
 ####################################################
 ## Workflows
@@ -108,23 +120,28 @@ def tag_torrents_as_reported(hash_strings):
 	for hash_string in hash_strings:
 		sqlite_driver.set_torrent_reported(hash_string)
 
-def get_torrent_information(username, args):
+def get_torrent_information(update, use_id, args):
 	result = {
 		'worked': False,
 		'retry': False,
-		'data': None
+		'text': None,
+		'reply_markup': None,
+		'chat_id': update.message.chat_id
 	}
+
+	username = update.message.chat_id
 
 	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
 
 	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
 
 	try:
-		torrent_data = transmission_driver.get_torrent_info_by_id(args)
+		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])
 
-		logger.debug('Torrent hash strings: %s', json.dumps([x['hashString'] for x in torrent_data]))
+		logger.debug('Torrent hash strings: %s', torrent_data[0]['hashString'])
 
-		result['data'] = [generate_torrent_info_message(x) for x in torrent_data if x['hashString'] in user_torrent_hashes]
+		result['text'] = generate_torrent_info_message(torrent_data[0])
+		result['reply_markup'] = generate_buttons_for_get_info_message()
 
 		result['worked'] = True
 	except transmission_driver.PreallocationException:

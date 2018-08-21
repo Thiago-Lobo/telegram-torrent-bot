@@ -66,6 +66,25 @@ def check_preallocation():
 			raise PreallocationException('Transmission daemon is preallocating. Try again later.')
 		pass
 
+def torrent_id_to_hash(ids):
+	try:
+		check_preallocation()
+	except PreallocationException:
+		raise
+
+	logger.debug('Converting id vector: %s to hash vector', json.dumps(ids))
+
+	result = ALL_TORRENTS_STRING
+
+	if ids != ALL_TORRENTS_STRING:
+		if not isinstance(ids, list):
+			ids = [ ids ]
+		result = [x.hashString for x in rpc.get_torrents() if x.id in ids]
+
+	logger.debug('Converted hash vector: %s', json.dumps(result))
+
+	return result
+
 def torrent_hash_to_id(hashes):
 	try:
 		check_preallocation()

@@ -11,7 +11,6 @@ import workflows
 import logging
 import util
 import traceback
-import emoji
 from datetime import datetime, timedelta
 from optparse import OptionParser
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
@@ -32,19 +31,6 @@ CALLBACK_QUERY_REFRESH_TORRENT = 'cbq_refresh_torrent'
 CALLBACK_QUERY_DELETE_TORRENT = 'cbq_delete_torrent'
 
 ####################################################
-## Helpers
-####################################################
-
-def generate_buttons_for_get_info_message():
-	button_list = [
-		InlineKeyboardButton(emoji.emojize(':play_or_pause_button:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
-		InlineKeyboardButton(emoji.emojize(':recycling_symbol:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
-		InlineKeyboardButton(emoji.emojize(':cross_mark:'), callback_data=CALLBACK_QUERY_PLAY_PAUSE_TORRENT)
-	]
-
-	return InlineKeyboardMarkup(util.build_menu(button_list, n_cols=3))
-
-####################################################
 ## Callback query resolver
 ####################################################
 
@@ -57,7 +43,7 @@ def callback_query_resolver(bot, update):
 
 	if callback_query_data == CALLBACK_QUERY_REFRESH_TORRENT:
 		a = 2
-	elif callback_query_data == CALLBACK_QUERY_REFRESH_TORRENT:
+	elif callback_query_data == CALLBACK_QUERY_PLAY_PAUSE_TORRENT:
 		a = 2
 	elif callback_query_data == CALLBACK_QUERY_DELETE_TORRENT:
 		a = 2
@@ -68,8 +54,8 @@ def callback_query_resolver(bot, update):
 ## Handler Callbacks
 ####################################################
 
-def unknown(bot, update, job_queue, args):
-	bot.send_message(chat_id=update.message.chat_id, text='Unknown command.')
+def unknown(bot, update):
+	bot.send_message(chat_id=update.message.chat_id, text='Unknown command.', reply_markup=None)
 
 def add_magnet(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, json.dumps(args))
@@ -84,15 +70,12 @@ def add_magnet(bot, update, job_queue, args):
 def get_info(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_GET_TORRENT_INFO, json.dumps(args))
 	
-	result = workflows.get_torrent_information(update.message.chat_id, args)
+	result = workflows.get_torrent_information(update, True, args)
 
 	if result['retry']:
 		job_queue.run_once(lambda bot, job: get_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
-	elif result['data']:
-		reply_markup = generate_buttons_for_get_info_message()
-		bot.send_message(chat_id=update.message.chat_id, text=result['data'][0], reply_markup=reply_markup)
-	else:
-		bot.send_message(chat_id=update.message.chat_id, text='No torrent found with the provided ID.')
+	
+	bot.send_message(**result)
 
 ####################################################
 ## Periodic Jobs
@@ -137,15 +120,10 @@ def initialize_bot():
 	dispatcher = updater.dispatcher
 	queue = updater.job_queue
 	
-	# buttons_handler = CommandHandler('buttons', buttons)
-	# dispatcher.add_handler(buttons_handler)
-
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, add_magnet, pass_args=True, pass_job_queue=True))
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_GET_TORRENT_INFO, get_info, pass_args=True, pass_job_queue=True))
+	dispatcher.add_handler(CallbackQueryHandler(callback_query_resolver))
 	dispatcher.add_handler(MessageHandler(Filters.command, unknown))
-
-	callback_query_handler = CallbackQueryHandler(callback_query_resolver)
-	dispatcher.add_handler(callback_query_handler)
 
 	initialize_periodic_jobs(queue)
 	
