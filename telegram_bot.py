@@ -35,20 +35,26 @@ CALLBACK_QUERY_DELETE_TORRENT = 'cbq_delete_torrent'
 ####################################################
 
 def callback_query_resolver(bot, update):
-	# bot.answer_callback_query(update.callback_query.id)
-	# bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text='{0}'.format(update.callback_query.data))
+	
 	# bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
 
 	callback_query_data = update.callback_query.data
 
-	if callback_query_data == CALLBACK_QUERY_REFRESH_TORRENT:
+	bot.answer_callback_query(update.callback_query.id)
+
+	if callback_query_data.startswith(CALLBACK_QUERY_PLAY_PAUSE_TORRENT):
 		a = 2
-	elif callback_query_data == CALLBACK_QUERY_PLAY_PAUSE_TORRENT:
-		a = 2
-	elif callback_query_data == CALLBACK_QUERY_DELETE_TORRENT:
+	elif callback_query_data.startswith(CALLBACK_QUERY_REFRESH_TORRENT):
+		result = workflows.get_torrent_information(update.callback_query.message, False, [callback_query_data.split(':')[1]])
+
+		if not result['retry']:
+			bot.edit_message_text(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id, text=result['text'], reply_markup=result['reply_markup'])
+	elif callback_query_data.startswith(CALLBACK_QUERY_DELETE_TORRENT):
 		a = 2
 	else:
 		a = 2
+
+	bot.send_message(chat_id=update.callback_query.message.chat_id, text='{0}'.format(update.callback_query.data))
 
 ####################################################
 ## Handler Callbacks
@@ -70,7 +76,7 @@ def add_magnet(bot, update, job_queue, args):
 def get_info(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_GET_TORRENT_INFO, json.dumps(args))
 	
-	result = workflows.get_torrent_information(update, True, args)
+	result = workflows.get_torrent_information(update.message, True, args)
 
 	if result['retry']:
 		job_queue.run_once(lambda bot, job: get_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)

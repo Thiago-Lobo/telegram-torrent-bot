@@ -41,11 +41,11 @@ def generate_torrent_info_message(torrent_data):
 
 	return message
 
-def generate_buttons_for_get_info_message(torrent_id):
+def generate_buttons_for_get_info_message(torrent_hash):
 	button_list = [
-		InlineKeyboardButton(emoji.emojize(':play_or_pause_button:'), callback_data='%s:%s' % (telegram_bot.CALLBACK_QUERY_REFRESH_TORRENT, torrent_id)),
-		InlineKeyboardButton(emoji.emojize(':recycling_symbol:'), callback_data=telegram_bot.CALLBACK_QUERY_PLAY_PAUSE_TORRENT),
-		InlineKeyboardButton(emoji.emojize(':cross_mark:'), callback_data=telegram_bot.CALLBACK_QUERY_DELETE_TORRENT)
+		InlineKeyboardButton(emoji.emojize(':play_or_pause_button:'), callback_data='%s:%s' % (telegram_bot.CALLBACK_QUERY_PLAY_PAUSE_TORRENT, torrent_hash)),
+		InlineKeyboardButton(emoji.emojize(':recycling_symbol:'), callback_data='%s:%s' % (telegram_bot.CALLBACK_QUERY_REFRESH_TORRENT, torrent_hash)),
+		InlineKeyboardButton(emoji.emojize(':cross_mark:'), callback_data='%s:%s' % (telegram_bot.CALLBACK_QUERY_DELETE_TORRENT, torrent_hash))
 	]
 
 	return InlineKeyboardMarkup(util.build_menu(button_list, n_cols=3))
@@ -120,34 +120,39 @@ def tag_torrents_as_reported(hash_strings):
 	for hash_string in hash_strings:
 		sqlite_driver.set_torrent_reported(hash_string)
 
-def get_torrent_information(update, use_id, args):
+def get_torrent_information(message, use_id, args):
 	result = {
-		'worked': False,
 		'retry': False,
 		'text': None,
 		'reply_markup': None,
-		'chat_id': update.message.chat_id
+		'chat_id': message.chat_id
 	}
 
-	username = update.message.chat_id
+	username = message.chat_id
 
 	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
 
 	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
 
 	try:
-		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])
+		if not use_id:
+			args = transmission_driver.torrent_hash_to_id(args)
 
-		logger.debug('Torrent hash strings: %s', torrent_data[0]['hashString'])
+		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])[0]
 
-		result['text'] = generate_torrent_info_message(torrent_data[0])
-		result['reply_markup'] = generate_buttons_for_get_info_message()
+		logger.debug('Torrent hash strings: %s', torrent_data['hashString'])
 
-		result['worked'] = True
+		if torrent_data['hashString'] in user_torrent_hashes:
+			result['reply_markup'] = generate_buttons_for_get_info_message(torrent_data['hashString'])
+			result['text'] = generate_torrent_info_message(torrent_data)
+		else:
+			result['text'] = 'Torrent not found.'
 	except transmission_driver.PreallocationException:
 		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
+		result['text'] = 'Preallocating. Will retry in a few seconds.'
 		result['retry'] = True
 	except Exception as ex:
+		result['text'] = 'Execution error.'
 		logging.exception('Error when getting torrent information.')
 
 	return result
