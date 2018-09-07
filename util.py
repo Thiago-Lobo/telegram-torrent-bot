@@ -16,6 +16,17 @@ def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
         menu.append(footer_buttons)
     return menu
 
+def is_list(object):
+	return isinstance(object, (list,))
+
+def not_list_to_list(object):
+	result = object
+
+	if not is_list(object):
+		result = [ object ]
+
+	return result
+
 def object_to_json(object):
 	result = {}
 	json_object = json.loads(jsonpickle.encode(object))

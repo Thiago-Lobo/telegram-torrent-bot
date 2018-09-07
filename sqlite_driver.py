@@ -73,6 +73,27 @@ QUERY_SELECT_UNREPORTED_TORRENT_HASHSTRINGS = '''
 		TTR_REPORTED = 0
 '''
 
+QUERY_DELETE_USERS_BY_TTR_HASHSTRING = '''
+	delete from 
+		TBL_TORRENT_USER
+	where
+		TTR_ID IN (
+			select 
+				TTR_ID
+			from
+				TBL_TORRENT_RECORD
+			where
+				TTR_HASHSTRING = (?) 
+		)
+'''
+
+QUERY_DELETE_TORRENT_BY_TTR_HASHSTRING = '''
+	delete from 
+		TBL_TORRENT_RECORD
+	where 
+		TBL_TORRENT_RECORD.TTR_HASHSTRING = (?)
+'''
+
 logger = logging.getLogger(__name__)
 
 def get_db():
@@ -140,19 +161,42 @@ def set_torrent_reported(hash_string):
 	cursor.execute(QUERY_SET_TORRENT_REPORTED, (hash_string,))
 	db.commit()
 
+def delete_torrent_users(hash_string):
+	db = get_db()
+	cursor = db.cursor()
+	logger.info('Deleting torrent record [%s]\'s users', hash_string)
+	cursor.execute(QUERY_DELETE_USERS_BY_TTR_HASHSTRING, (hash_string,))
+	db.commit()
+
+def delete_torrent(hash_string):
+	db = get_db()
+	cursor = db.cursor()
+	logger.info('Deleting torrent record [%s]', hash_string)
+	cursor.execute(QUERY_DELETE_TORRENT_BY_TTR_HASHSTRING, (hash_string,))
+	db.commit()
+
 def main():
 	initialize()
 
-	row_id = insert_torrent_record('a')
-	insert_torrent_user(row_id, 'thiago')
-	insert_torrent_user(row_id, 'leila')
+	# row_id = insert_torrent_record('a')
+	# insert_torrent_user(row_id, 'thiago')
+	# insert_torrent_user(row_id, 'leila')
 
-	row_id = insert_torrent_record('b')
-	insert_torrent_user(row_id, 'daniela')
+	# delete_torrent_users('a')
+	# delete_torrent('a')
+
+	# row_id = insert_torrent_record('b')
+	# insert_torrent_user(row_id, 'daniela')
 
 	db = get_db()
 	cursor = db.cursor()
 	cursor.execute('''select * from TBL_TORRENT_RECORD''')
+	for row in cursor:
+		print row
+
+	db = get_db()
+	cursor = db.cursor()
+	cursor.execute('''select * from TBL_TORRENT_USER''')
 	for row in cursor:
 		print row
 

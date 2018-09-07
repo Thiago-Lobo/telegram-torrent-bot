@@ -28,15 +28,17 @@ def initialize():
 
 def generate_torrent_info_message(torrent_data):
 	name = torrent_data['name']
-	percentage_done = (1.0 - float(torrent_data['leftUntilDone']) / float(torrent_data['totalSize'])) * 100.0
+	percentage_done = '%.2f' % ((1.0 - float(torrent_data['leftUntilDone']) / float(torrent_data['totalSize'])) * 100.0)
 	size = '%.2f' % (float(torrent_data['totalSize'] / (1000.0 * 1000.0 * 1000.0)))
 	added = util.timestamp_to_string(util.epoch_to_timestamp(torrent_data['addedDate']))
+	status = transmission_driver.get_torrent_status(torrent_data['status'])
 
-	message = 'Name: {name}\nSize: {size} GB\nDone: {percentage_done}%\nAdded: {added}'.format(
+	message = 'Name: {name}\nSize: {size} GB\nStatus: {status}\nDone: {percentage_done}%\nAdded: {added}'.format(
 			name = name,
 			percentage_done = percentage_done,
 			size = size,
-			added = added
+			added = added,
+			status = status
 		)
 
 	return message
@@ -120,22 +122,24 @@ def tag_torrents_as_reported(hash_strings):
 	for hash_string in hash_strings:
 		sqlite_driver.set_torrent_reported(hash_string)
 
-def get_torrent_information(message, use_id, args):
+def get_torrent_information(message, args, use_torrent_id=True):
+	args = util.not_list_to_list(args)
+
 	result = {
 		'retry': False,
 		'text': None,
 		'reply_markup': None,
-		'chat_id': message.chat_id
+		'chat_id': message.chat_id,
+		'message_id': message.message_id
 	}
 
 	username = message.chat_id
-
 	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
 
 	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
 
 	try:
-		if not use_id:
+		if not use_torrent_id:
 			args = transmission_driver.torrent_hash_to_id(args)
 
 		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])[0]
@@ -147,6 +151,82 @@ def get_torrent_information(message, use_id, args):
 			result['text'] = generate_torrent_info_message(torrent_data)
 		else:
 			result['text'] = 'Torrent not found.'
+	except transmission_driver.PreallocationException:
+		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
+		result['text'] = 'Preallocating. Will retry in a few seconds.'
+		result['retry'] = True
+	except Exception as ex:
+		result['text'] = 'Execution error.'
+		logging.exception('Error when getting torrent information.')
+
+	return result
+
+def toggle_torrent(message, args):
+	args = util.not_list_to_list(args)
+
+	result = {
+		'retry': False,
+		'text': None,
+		'reply_markup': None,
+		'chat_id': message.chat_id,
+		'message_id': message.message_id
+	}
+
+	username = message.chat_id
+	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
+	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
+
+	try:
+		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])[0]
+
+		logger.debug('Torrent status is: %s (%s)', torrent_data['status'], transmission_driver.get_torrent_status(torrent_data['status']))
+
+		if torrent_data['hashString'] in user_torrent_hashes:
+			if torrent_data['status'] == 0:
+				transmission_driver.resume_torrent_by_hash(args)
+			else:
+				transmission_driver.pause_torrent_by_hash(args)
+
+			result = get_torrent_information(message, args, use_torrent_id=False)		
+	except transmission_driver.PreallocationException:
+		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
+		result['text'] = 'Preallocating. Will retry in a few seconds.'
+		result['retry'] = True
+	except Exception as ex:
+		result['text'] = 'Execution error.'
+		logging.exception('Error when getting torrent information.')
+
+	return result
+
+def delete_torrent(message, args, use_torrent_id=True):
+	args = util.not_list_to_list(args)
+
+	result = {
+		'retry': False,
+		'text': None,
+		'reply_markup': None,
+		'chat_id': message.chat_id,
+		'message_id': message.message_id
+	}
+
+	username = message.chat_id
+	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
+
+	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
+
+	try:
+		if not use_torrent_id:
+			args = transmission_driver.torrent_hash_to_id(args)
+
+		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])[0]
+
+		logger.debug('Torrent hash strings: %s', torrent_data['hashString'])
+
+		if torrent_data['hashString'] in user_torrent_hashes:
+			transmission_driver.remove_torrent_by_id(args)
+			sqlite_driver.delete_torrent_users(torrent_data['hashString'])
+			sqlite_driver.delete_torrent(torrent_data['hashString'])
+			result['text'] = 'Torrent deleted successfully.'
 	except transmission_driver.PreallocationException:
 		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
 		result['text'] = 'Preallocating. Will retry in a few seconds.'
