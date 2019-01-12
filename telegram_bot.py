@@ -11,6 +11,7 @@ import workflows
 import logging
 import util
 import traceback
+import message_builder
 from datetime import datetime, timedelta
 from optparse import OptionParser
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
@@ -78,13 +79,24 @@ def add_magnet(bot, update, job_queue, args):
 
 	bot.send_message(chat_id=update.message.chat_id, text=result['message'])
 
-def get_info(bot, update, job_queue, args):
+# def callback_get_info(bot, update, job_queue, args):
+# 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_GET_TORRENT_INFO, json.dumps(args))
+	
+# 	result = workflows.get_torrent_information(update.message, args)
+
+# 	if result['retry']:
+# 		job_queue.run_once(lambda bot, job: callback_get_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
+	
+# 	if result['text']:
+# 		bot.send_message(**result)
+
+def callback_get_torrent_info(bot, update, job_queue, args):
 	logger.info('Handling [%s] command - arguments: %s', TELEGRAM_COMMAND_GET_TORRENT_INFO, json.dumps(args))
 	
-	result = workflows.get_torrent_information(update.message, args)
+	workflow_result = workflows.workflow_get_torrent_info(update.message, args)
 
 	if result['retry']:
-		job_queue.run_once(lambda bot, job: get_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
+		job_queue.run_once(lambda bot, job: callback_get_torrent_info(bot, update, job_queue, args), PREALLOCATION_RETRY_SECONDS)
 	
 	if result['text']:
 		bot.send_message(**result)
@@ -133,7 +145,7 @@ def initialize_bot():
 	queue = updater.job_queue
 	
 	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_ADD_TORRENT_MAGNET_LINK, add_magnet, pass_args=True, pass_job_queue=True))
-	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_GET_TORRENT_INFO, get_info, pass_args=True, pass_job_queue=True))
+	dispatcher.add_handler(CommandHandler(TELEGRAM_COMMAND_GET_TORRENT_INFO, callback_get_torrent_info, pass_args=True, pass_job_queue=True))
 	dispatcher.add_handler(CallbackQueryHandler(callback_query_resolver))
 	dispatcher.add_handler(MessageHandler(Filters.command, unknown))
 

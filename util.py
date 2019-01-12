@@ -19,6 +19,15 @@ def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
 def is_list(object):
 	return isinstance(object, (list,))
 
+def is_string(object):
+	return isinstance(object, basestring)
+
+def is_hash_not_id(hash_or_id):
+	if is_string(hash_or_id) and len(hash_or_id) > 10:
+		return True
+
+	return False
+
 def not_list_to_list(object):
 	result = object
 

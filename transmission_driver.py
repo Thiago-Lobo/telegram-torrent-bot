@@ -32,8 +32,10 @@ status_mapping = {
     6: 'seeding',
 }
 
+
 class PreallocationException(Exception):
 	pass
+
 
 def initialize():
 	global rpc
@@ -42,11 +44,13 @@ def initialize():
 	logger.debug('Initialized session information:\n%s', json.dumps(util.object_to_json(rpc.get_session())))
 	logger.debug('RPC timeout: %s', rpc.timeout)
 
+
 def get_torrent_status(status_id):
 	if status_id > 6 or status_id < 0:
 		return "invalid"
 
 	return status_mapping[status_id]
+
 
 def get_status_id(status_name):
 	for key, value in status_mapping.iteritems():
@@ -54,6 +58,7 @@ def get_status_id(status_name):
 			return key
 
 	return -1
+
 
 def check_preallocation():
 	try:
@@ -65,6 +70,7 @@ def check_preallocation():
 			logger.debug('Exception type is timeout. Will raise PreallocationException.')
 			raise PreallocationException('Transmission daemon is preallocating. Try again later.')
 		pass
+
 
 def torrent_id_to_hash(ids):
 	try:
@@ -85,6 +91,7 @@ def torrent_id_to_hash(ids):
 
 	return result
 
+
 def torrent_hash_to_id(hashes):
 	try:
 		check_preallocation()
@@ -104,8 +111,10 @@ def torrent_hash_to_id(hashes):
 
 	return result
 
+
 def get_all_torrent_ids():
 	return [x.id for x in rpc.get_torrents()]
+
 
 def handle_ids_argument(ids):
 	logger.debug('Handling ids argument: %s', json.dumps(ids))
@@ -114,6 +123,7 @@ def handle_ids_argument(ids):
 		ids = get_all_torrent_ids()
 
 	return ids
+
 
 def get_torrent_info_by_id(ids):
 	try:
@@ -127,6 +137,7 @@ def get_torrent_info_by_id(ids):
 
 	return [util.object_to_json(x) for x in rpc.get_torrents(ids)]
 
+
 def get_torrent_info_by_hash(hashes):
 	try:
 		check_preallocation()
@@ -137,6 +148,24 @@ def get_torrent_info_by_hash(hashes):
 	ids = torrent_hash_to_id(hashes)
 
 	return get_torrent_info_by_id(ids)
+
+
+def get_torrent_info(hash_or_id):
+	result = None
+
+	try:
+		check_preallocation()
+	except PreallocationException:
+		raise
+
+	if util.is_hash_not_id(hash_or_id):
+		logger.debug('%s seems to be a torrent hash. Proceeding...', hash_or_id)
+		hash_or_id = torrent_hash_to_id(hash_or_id)
+	else:
+		logger.debug('%s seems to be a torrent id. Proceeding...', hash_or_id)
+
+	return util.object_to_json(rpc.get_torrents(hash_or_id)[0])
+
 
 def add_torrent_magnet_link(magnet_link):
 	try:
@@ -150,6 +179,7 @@ def add_torrent_magnet_link(magnet_link):
 	logger.debug('Added torrent data:\n%s', json.dumps(json_torrent_data))
 	return json_torrent_data
 
+
 def pause_torrent_by_id(ids):
 	try:
 		check_preallocation()
@@ -161,6 +191,7 @@ def pause_torrent_by_id(ids):
 	logger.info('Will attempt to pause torrents with ids: %s', json.dumps(ids))
 	rpc.stop_torrent(ids)
 
+
 def pause_torrent_by_hash(hashes):
 	try:
 		check_preallocation()
@@ -171,6 +202,22 @@ def pause_torrent_by_hash(hashes):
 	ids = torrent_hash_to_id(hashes)
 
 	return pause_torrent_by_id(ids)
+
+
+def pause_torrent(hash_or_id):
+	try:
+		check_preallocation()
+	except PreallocationException:
+		raise
+
+	if util.is_hash_not_id(hash_or_id):
+		logger.debug('%s seems to be a torrent hash. Proceeding...', hash_or_id)
+		hash_or_id = torrent_hash_to_id(hash_or_id)
+	else:
+		logger.debug('%s seems to be a torrent id. Proceeding...', hash_or_id)
+
+	return util.object_to_json(rpc.get_torrents(hash_or_id)[0])
+
 
 def resume_torrent_by_id(ids):
 	try:
@@ -251,3 +298,17 @@ def set_session_property(**kwargs):
 
 	logger.info('Will attempt to set session data fields: %s', json.dumps(kwargs))
 	rpc.set_session(**kwargs)
+
+####################################################
+## Testers
+####################################################
+
+def main():
+	initialize()
+
+	# print json.dumps(get_torrent_info(37), indent=2)
+	print json.dumps(get_torrent_info('a84c961b84e02263e45a640df483eaebe973027c'), indent=2)
+
+
+if __name__ == '__main__':
+	main()

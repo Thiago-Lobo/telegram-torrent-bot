@@ -238,6 +238,49 @@ def delete_torrent(message, args, use_torrent_id=True):
 	return result
 
 ####################################################
+## New workflows
+####################################################
+
+def workflow_get_torrent_info(message, args, use_torrent_id=True):
+	args = util.not_list_to_list(args)
+
+	result = {
+		'retry': False,
+		'text': None,
+		'reply_markup': None,
+		'chat_id': message.chat_id,
+		'message_id': message.message_id
+	}
+
+	username = message.chat_id
+	user_torrent_hashes = sqlite_driver.get_torrent_hashes_by_user(username)
+
+	logger.debug('Got %s torrent hashes for username: %s', json.dumps(user_torrent_hashes), username)
+
+	try:
+		if not use_torrent_id:
+			args = transmission_driver.torrent_hash_to_id(args)
+
+		torrent_data = transmission_driver.get_torrent_info_by_id(args[0])[0]
+
+		logger.debug('Torrent hash strings: %s', torrent_data['hashString'])
+
+		if torrent_data['hashString'] in user_torrent_hashes:
+			result['reply_markup'] = generate_buttons_for_get_info_message(torrent_data['hashString'])
+			result['text'] = generate_torrent_info_message(torrent_data)
+		else:
+			result['text'] = 'Torrent not found.'
+	except transmission_driver.PreallocationException:
+		logger.debug('Transmission daemon is preallocating. Aborting workflow.')
+		result['text'] = 'Preallocating. Will retry in a few seconds.'
+		result['retry'] = True
+	except Exception as ex:
+		result['text'] = 'Execution error.'
+		logging.exception('Error when getting torrent information.')
+
+	return result
+
+####################################################
 ## Testers
 ####################################################
 
